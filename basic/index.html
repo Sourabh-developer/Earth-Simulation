@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfect Solar System with Pure White Sun</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            pointer-events: none;
+            text-shadow: 0 0 5px black;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Perfect Solar System with Pure White Sun • Use mouse to orbit/zoom</div>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/TextureLoader.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 3000);
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Orbit controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 5;
+        controls.maxDistance = 500;
+        controls.target.set(0, 0, 0);
+
+        // Camera position
+        camera.position.set(0, 20, 50);
+        controls.update();
+
+        // Texture loader
+        const textureLoader = new THREE.TextureLoader();
+
+        // Create perfectly bright white Sun
+        const sunGeometry = new THREE.SphereGeometry(20, 64, 64);
+        
+        // Simplified sun material - pure white with no shading
+        const sunMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff
+        });
+        
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        
+        // Sun light source - extremely bright white light
+        const sunLight = new THREE.PointLight(0xffffff, 3, 2000);
+        sunLight.decay = 2; // More natural light falloff
+        
+        // Position Sun realistically far away
+        sun.position.set(200, 0, -300);
+        sunLight.position.copy(sun.position);
+        scene.add(sun);
+        scene.add(sunLight);
+
+        // Create Earth
+        const earthGeometry = new THREE.SphereGeometry(5, 64, 64);
+        const earthMaterial = new THREE.MeshPhongMaterial({
+            map: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg'),
+            bumpMap: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_normal_2048.jpg'),
+            bumpScale: 0.25,
+            specularMap: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_specular_2048.jpg'),
+            specular: new THREE.Color(0x111111),
+            shininess: 5
+        });
+        const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+        scene.add(earth);
+
+        // Create cloud layer
+        const cloudGeometry = new THREE.SphereGeometry(5.05, 64, 64);
+        const cloudMaterial = new THREE.MeshPhongMaterial({
+            map: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_clouds_1024.png'),
+            transparent: true,
+            opacity: 0.3,
+            alphaTest: 0.01
+        });
+        const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        earth.add(clouds);
+
+        // Create natural-looking atmosphere
+        const atmosphereGeometry = new THREE.SphereGeometry(5.15, 64, 64);
+        const atmosphereMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                glowColor: { type: "c", value: new THREE.Color(0x6b93d6) },
+                sunDirection: { type: "v3", value: new THREE.Vector3() }
+            },
+            vertexShader: `
+                uniform vec3 sunDirection;
+                varying float sunIntensity;
+                void main() {
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    vec3 actual_normal = normalize(normalMatrix * normal);
+                    sunIntensity = max(0.0, dot(actual_normal, normalize(sunDirection)));
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 glowColor;
+                varying float sunIntensity;
+                void main() {
+                    vec3 glow = glowColor * 0.5;
+                    vec3 sunsetGlow = vec3(1.0, 0.9, 0.8) * pow(sunIntensity, 5.0) * 0.5;
+                    gl_FragColor = vec4(glow + sunsetGlow, 0.5);
+                }
+            `,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            transparent: true
+        });
+        const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+        earth.add(atmosphere);
+
+        // Create Moon
+        const moonGeometry = new THREE.SphereGeometry(1.27, 32, 32);
+        const moonMaterial = new THREE.MeshPhongMaterial({
+            map: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/moon_1024.jpg'),
+            bumpMap: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/moon_1024.jpg'),
+            bumpScale: 0.05
+        });
+        const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+        scene.add(moon);
+
+        // Moon orbit
+        const moonOrbitRadius = 10;
+        let moonAngle = 0;
+
+        // Stars background with varying sizes
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsVertices = [];
+        const starsSizes = [];
+        for (let i = 0; i < 15000; i++) {
+            const x = (Math.random() - 0.5) * 3000;
+            const y = (Math.random() - 0.5) * 3000;
+            const z = (Math.random() - 0.5) * 3000;
+            starsVertices.push(x, y, z);
+            starsSizes.push(Math.random() * 0.3 + 0.1);
+        }
+        starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+        starsGeometry.setAttribute('size', new THREE.Float32BufferAttribute(starsSizes, 1));
+        const starsMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.1,
+            sizeAttenuation: true,
+            transparent: true,
+            opacity: 0.9
+        });
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Earth rotation
+            earth.rotation.y += 0.005;
+            
+            // Clouds rotation
+            clouds.rotation.y += 0.006;
+
+            // Moon orbit and rotation
+            moonAngle += 0.01;
+            moon.position.x = Math.cos(moonAngle) * moonOrbitRadius;
+            moon.position.z = Math.sin(moonAngle) * moonOrbitRadius;
+            moon.rotation.y += 0.005;
+
+            // Update atmosphere shader
+            atmosphere.material.uniforms.sunDirection.value = 
+                new THREE.Vector3().subVectors(sun.position, earth.position).normalize();
+
+            // Update controls
+            controls.update();
+
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
